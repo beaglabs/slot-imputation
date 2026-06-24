@@ -7,7 +7,7 @@ task:
   random:
     vocab_size: 256
   structured:
-    num_states: 16
+    num_states: 64
     chain_seed: 42
 
 model:
@@ -21,7 +21,7 @@ training:
   steps: 500
   lr: 0.0005
   seq_len: 2048
-  corruption_rate: 0.15
+  corruption_rate: 0.50
   vocab_size: 256
 
 anchors:
@@ -56,7 +56,7 @@ imputation:
 
 validation:
   pp_batches: 10
-  convergence_steps: 100
+  convergence_steps: 200
   device: "cpu"
   use_corrupted_eval: true
 
