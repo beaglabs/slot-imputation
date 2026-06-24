@@ -5,6 +5,9 @@ from typing import Dict
 import yaml
 
 
+VARIANT_ORDER = ["A_full", "B_boundary", "C_signal", "D_naive", "E_krige"]
+
+
 def generate_report(validation_results: dict, config: dict) -> str:
     lines = []
 
@@ -27,7 +30,7 @@ def generate_report(validation_results: dict, config: dict) -> str:
     lines.append("## 2. Imputation Quality: Zero-Shot Perplexity\n")
     lines.append("| Variant | Perplexity |")
     lines.append("|---|---|")
-    for name in ["A_full", "B_boundary", "C_signal", "D_naive"]:
+    for name in VARIANT_ORDER:
         if name in validation_results:
             ppl = validation_results[name].get("zero_shot_ppl", "N/A")
             ppl_str = f"{ppl:.2f}" if isinstance(ppl, (int, float)) else str(ppl)
@@ -37,7 +40,7 @@ def generate_report(validation_results: dict, config: dict) -> str:
     lines.append("## 3. Weight Distance to Ground Truth\n")
     lines.append("| Variant | Slot K MSE | Slot V MSE | Slot K Cosine | Slot V Cosine |")
     lines.append("|---|---|---|---|---|")
-    for name in ["A_full", "B_boundary", "C_signal", "D_naive"]:
+    for name in VARIANT_ORDER:
         if name in validation_results and "weight_distance" in validation_results[name]:
             wd = validation_results[name]["weight_distance"]
             lines.append(
@@ -47,20 +50,20 @@ def generate_report(validation_results: dict, config: dict) -> str:
     lines.append("")
 
     lines.append("## 4. Convergence Speedup\n")
-    lines.append("| Variant | Imputed Final Loss | Random Final Loss | Speedup Ratio |")
+    lines.append("| Variant | Imputed Initial Loss | Random Initial Loss | Head Start (steps to match) |")
     lines.append("|---|---|---|---|")
-    for name in ["A_full", "B_boundary", "C_signal", "D_naive"]:
+    for name in VARIANT_ORDER:
         if name in validation_results and "convergence" in validation_results[name]:
             conv = validation_results[name]["convergence"]
-            imp_final = conv["imputed_loss_curve"][-1] if conv["imputed_loss_curve"] else 0
-            rnd_final = conv["random_loss_curve"][-1] if conv["random_loss_curve"] else 0
+            imp_init = conv.get("imputed_initial_loss", 0)
+            rnd_init = conv.get("random_initial_loss", 0)
             lines.append(
-                f"| {name} | {imp_final:.4f} | {rnd_final:.4f} | {conv['speedup_ratio']:.2f}x |"
+                f"| {name} | {imp_init:.4f} | {rnd_init:.4f} | {conv['speedup_ratio']} |"
             )
     lines.append("")
 
     lines.append("## 5. Kriging Calibration\n")
-    for name in ["A_full", "B_boundary", "C_signal", "D_naive"]:
+    for name in VARIANT_ORDER:
         if name in validation_results and "calibration" in validation_results[name]:
             cal = validation_results[name]["calibration"]
             lines.append(f"### {name}\n")

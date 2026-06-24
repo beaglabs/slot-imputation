@@ -148,6 +148,12 @@ def build_imputed_variants(
         non_slot_strategy="best",
     )
 
+    variants["E_krige"] = build_imputed_model(
+        target_M, anchor_checkpoints, anchor_Ms,
+        interpolation_method="krige",
+        non_slot_strategy="average",
+    )
+
     return variants
 
 
@@ -195,7 +201,15 @@ def _main():
 
     for name, (model, meta) in variants.items():
         path = os.path.join(args.output_dir, f"{name}.pt")
-        MurmurativeProbe.save(model, path, {"variant": name, "target_M": target_M})
+        save_meta = {
+            "variant": name,
+            "target_M": target_M,
+            "krige_var_k": meta.get("krige_var_k"),
+            "krige_var_v": meta.get("krige_var_v"),
+            "slot_k_pred": meta.get("slot_k_pred"),
+            "slot_v_pred": meta.get("slot_v_pred"),
+        }
+        MurmurativeProbe.save(model, path, save_meta)
 
     print(f"Saved {len(variants)} imputed variants to {args.output_dir}/")
 

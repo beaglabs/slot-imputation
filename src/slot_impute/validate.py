@@ -83,18 +83,21 @@ def convergence_speedup(
     imputed_losses = _fine_tune(imputed_model, num_steps, device)
     random_losses = _fine_tune(random_init_model, num_steps, device)
 
-    imputed_final = imputed_losses[-1]
+    imputed_initial = imputed_losses[0]
+    random_initial = random_losses[0]
     speedup_steps = num_steps
     for i, loss in enumerate(random_losses):
-        if loss <= imputed_final:
+        if loss <= imputed_initial:
             speedup_steps = i + 1
             break
 
-    speedup_ratio = num_steps / max(speedup_steps, 1)
+    speedup_ratio = speedup_steps
 
     return {
         "imputed_loss_curve": imputed_losses,
         "random_loss_curve": random_losses,
+        "imputed_initial_loss": imputed_initial,
+        "random_initial_loss": random_initial,
         "speedup_ratio": speedup_ratio,
     }
 
@@ -104,8 +107,13 @@ def _fine_tune(model: nn.Module, num_steps: int, device: str) -> list[float]:
     optimizer = torch.optim.AdamW(model.parameters(), lr=5e-4, eps=1e-4)
     losses = []
 
+    rng = torch.Generator(device=device)
+    rng.manual_seed(42)
+    vocab_size = 256
+    seq_len = 128
+
     for step in range(num_steps):
-        input_ids = torch.randint(0, 256, (1, 128), device=device, dtype=torch.long)
+        input_ids = torch.randint(0, vocab_size, (1, seq_len), device=device, dtype=torch.long, generator=rng)
 
         optimizer.zero_grad()
         logits = model(input_ids)
@@ -148,10 +156,9 @@ def full_validation_report(
     ground_truth_model: nn.Module,
     device: str = "cpu",
 ) -> dict:
-    data_iter = build_synthetic_data(256, 128, 10, device, dtype=torch.long)
-
     report = {}
     for name, (model, meta) in variants.items():
+        data_iter = build_synthetic_data(256, 128, 10, device, dtype=torch.long)
         entry = {
             "zero_shot_ppl": compute_perplexity(model, data_iter, device),
             "weight_distance": weight_distance(model, ground_truth_model),
@@ -194,7 +201,7 @@ def _main():
     gt_path = os.path.join(args.checkpoint_dir, f"M{target_M}_seed42.pt")
     gt_model, _ = load_checkpoint(gt_path)
 
-    variant_names = ["A_full", "B_boundary", "C_signal", "D_naive"]
+    variant_names = ["A_full", "B_boundary", "C_signal", "D_naive", "E_krige"]
     variants = {}
     for name in variant_names:
         path = os.path.join(args.imputed_dir, f"{name}.pt")
