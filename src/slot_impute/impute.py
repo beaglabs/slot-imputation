@@ -166,29 +166,31 @@ def _main():
     with open(args.config) as f:
         config = yaml.safe_load(f)
 
-    anchor_Ms = [m for m in config["anchors"]["m_values"] if m != 256]
+    unique_anchor_Ms = [m for m in config["anchors"]["m_values"] if m != 256]
     target_M = config["anchors"]["target_m"]
     seeds = config["anchors"]["seeds"]
 
     os.makedirs(args.output_dir, exist_ok=True)
 
     anchor_checkpoints = []
-    for M in anchor_Ms:
+    all_anchor_Ms = []
+    for M in unique_anchor_Ms:
         for seed in seeds:
             path = os.path.join(args.checkpoint_dir, f"M{M}_seed{seed}.pt")
             if os.path.exists(path):
                 anchor_checkpoints.append(path)
+                all_anchor_Ms.append(M)
 
     signal_masks = {}
     if os.path.exists(args.signal_masks_dir):
-        for M in anchor_Ms:
+        for M in unique_anchor_Ms:
             mask_path = os.path.join(args.signal_masks_dir, f"M{M}.pt")
             if os.path.exists(mask_path):
                 data = torch.load(mask_path, map_location="cpu", weights_only=False)
                 signal_masks[M] = data["signal_mask"]
 
     variants = build_imputed_variants(
-        anchor_checkpoints, anchor_Ms, target_M, signal_masks if signal_masks else None
+        anchor_checkpoints, all_anchor_Ms, target_M, signal_masks if signal_masks else None
     )
 
     for name, (model, meta) in variants.items():
