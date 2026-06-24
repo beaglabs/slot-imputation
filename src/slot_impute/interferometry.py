@@ -25,13 +25,18 @@ def hungarian_align_slots(
 def align_all_seeds(checkpoints: dict) -> Tuple[List[torch.Tensor], List[torch.Tensor]]:
     from .extract import load_checkpoint, extract_slot_pool
 
-    ref_model, _ = load_checkpoint(checkpoints[42])
+    seeds = sorted(checkpoints.keys())
+    if not seeds:
+        raise ValueError("No checkpoints provided to align_all_seeds")
+
+    ref_seed = seeds[0]
+    ref_model, _ = load_checkpoint(checkpoints[ref_seed])
     ref_k, ref_v = extract_slot_pool(ref_model)
 
     aligned_k = [ref_k]
     aligned_v = [ref_v]
 
-    for seed in [123, 999]:
+    for seed in seeds[1:]:
         model, _ = load_checkpoint(checkpoints[seed])
         sk, sv = extract_slot_pool(model)
         perm = hungarian_align_slots(ref_k, sk)
@@ -108,10 +113,19 @@ def _main():
     alignments_by_M = {}
     for M in m_values:
         checkpoints = {}
+        missing = []
         for seed in seeds:
             path = os.path.join(args.checkpoint_dir, f"M{M}_seed{seed}.pt")
             if os.path.exists(path):
                 checkpoints[seed] = path
+            else:
+                missing.append(seed)
+        if missing:
+            print(f"Skipping M={M}: missing seeds {missing}")
+            continue
+        if len(checkpoints) < 2:
+            print(f"Skipping M={M}: need at least 2 seeds, found {len(checkpoints)}")
+            continue
         aligned_k, aligned_v = align_all_seeds(checkpoints)
         alignments_by_M[M] = (aligned_k, aligned_v)
 
