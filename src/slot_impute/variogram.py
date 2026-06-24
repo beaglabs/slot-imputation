@@ -24,10 +24,10 @@ def sample_at_positions(
     for i, p in enumerate(target_positions):
         p_val = p.item()
         idx = torch.searchsorted(src_pos, p_val)
-        idx = idx.clamp(1, M - 1)
+        idx = int(idx.clamp(1, M - 1).item())
         lo, hi = idx - 1, idx
         alpha = (p_val - src_pos[lo].item()) / (src_pos[hi].item() - src_pos[lo].item() + 1e-8)
-        result[:, i] = (1 - alpha) * slot_weights[:, lo] + alpha * slot_weights[:, hi]
+        result[:, i, :] = (1 - alpha) * slot_weights[:, lo, :] + alpha * slot_weights[:, hi, :]
     return result
 
 

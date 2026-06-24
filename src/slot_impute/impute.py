@@ -97,14 +97,14 @@ def _interpolate_mask(
     for M in all_Ms:
         m = signal_masks[M].float()
         src_pos = normalize_positions(M)
-        result = torch.zeros(mask_shape[0], target_M)
+        result = torch.zeros(mask_shape[0], target_M, mask_shape[2])
         for j in range(target_M):
             p = target_positions[j].item()
             idx = torch.searchsorted(src_pos, p)
-            idx = idx.clamp(1, M - 1)
+            idx = int(idx.clamp(1, M - 1).item())
             lo, hi = idx - 1, idx
             alpha = (p - src_pos[lo].item()) / (src_pos[hi].item() - src_pos[lo].item() + 1e-8)
-            result[:, j] = (1 - alpha) * m[:, lo] + alpha * m[:, hi]
+            result[:, j, :] = (1 - alpha) * m[:, lo, :] + alpha * m[:, hi, :]
         mask_float_list.append(result)
 
     stacked = torch.stack(mask_float_list)
