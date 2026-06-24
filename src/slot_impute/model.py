@@ -75,7 +75,7 @@ def build_geology_data(
     chain_seed: int = 42,
 ) -> Iterator[Tuple[torch.Tensor, torch.Tensor]]:
     N = len(LITHOLOGY_NAMES)
-    trans = make_geology_transition_matrix(seed=chain_seed)
+    trans = make_geology_transition_matrix(seed=chain_seed).to(device)
     gen = torch.Generator(device=device)
     gen.manual_seed(seed)
 
@@ -84,7 +84,7 @@ def build_geology_data(
         seq[0, 0] = torch.randint(0, N, (1,), device=device, generator=gen).item()
         for t in range(1, seq_len):
             probs = trans[seq[0, t - 1].item()]
-            seq[0, t] = torch.multinomial(probs, 1, generator=gen).to(device).item()
+            seq[0, t] = torch.multinomial(probs, 1, generator=gen).item()
         clean_ids = seq
 
         corrupted = clean_ids.clone()
@@ -240,7 +240,7 @@ def build_markov_data(
     seed: int = 42,
     chain_seed: int = 42,
 ) -> Iterator[Tuple[torch.Tensor, torch.Tensor]]:
-    trans = make_markov_chain(num_states, seed=chain_seed)
+    trans = make_markov_chain(num_states, seed=chain_seed).to(device)
     gen = torch.Generator(device=device)
     gen.manual_seed(seed)
 
@@ -249,7 +249,7 @@ def build_markov_data(
         seq[0, 0] = torch.randint(0, num_states, (1,), device=device, generator=gen).item()
         for t in range(1, seq_len):
             probs = trans[seq[0, t - 1].item()]
-            seq[0, t] = torch.multinomial(probs, 1, generator=gen).to(device).item()
+            seq[0, t] = torch.multinomial(probs, 1, generator=gen).item()
         clean_ids = seq
 
         corrupted = clean_ids.clone()
