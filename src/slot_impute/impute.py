@@ -43,10 +43,10 @@ def build_imputed_model(
         best = min(all_weights, key=lambda x: x[1]["final_ppl"])
         non_slot = best[0]
 
-    del non_slot["slot_k"], non_slot["slot_v"]
-
     slot_k_list = [w[0]["slot_k"] for w in all_weights]
     slot_v_list = [w[0]["slot_v"] for w in all_weights]
+
+    del non_slot["slot_k"], non_slot["slot_v"]
 
     target_positions = normalize_positions(target_M)
 
