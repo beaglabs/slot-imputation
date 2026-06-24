@@ -7,7 +7,12 @@ CHECKPOINT_DIR="checkpoints"
 DEVICE="cpu"
 
 TASK=$(python3 -c "import yaml; c=yaml.safe_load(open('$CONFIG')); print(c.get('experiment',{}).get('task','random'))")
-if [ "$TASK" = "structured" ]; then
+if [ "$TASK" = "geology" ]; then
+    NUM_LITH=$(python3 -c "import yaml; c=yaml.safe_load(open('$CONFIG')); print(c['task']['geology']['num_lithologies'])")
+    GEOL_SEED=$(python3 -c "import yaml; c=yaml.safe_load(open('$CONFIG')); print(c['task']['geology']['seed'])")
+    CORR_RATE=$(python3 -c "import yaml; c=yaml.safe_load(open('$CONFIG')); print(c['training']['corruption_rate'])")
+    TASK_FLAGS="--task geology --num-lithologies $NUM_LITH --geology-seed $GEOL_SEED"
+elif [ "$TASK" = "structured" ]; then
     NUM_STATES=$(python3 -c "import yaml; c=yaml.safe_load(open('$CONFIG')); print(c['task']['structured']['num_states'])")
     CHAIN_SEED=$(python3 -c "import yaml; c=yaml.safe_load(open('$CONFIG')); print(c['task']['structured']['chain_seed'])")
     CORR_RATE=$(python3 -c "import yaml; c=yaml.safe_load(open('$CONFIG')); print(c['training']['corruption_rate'])")
@@ -17,7 +22,7 @@ else
     CORR_RATE="0.15"
 fi
 
-M_VALUES=(128 192 256 384 512)
+M_VALUES=(16 24 32 48 64)
 SEEDS=(42 123 999)
 
 mkdir -p "$CHECKPOINT_DIR"

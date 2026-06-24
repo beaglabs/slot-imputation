@@ -23,6 +23,8 @@ def generate_report(validation_results: dict, config: dict) -> str:
     lines.append(f"| d_model | {config['model']['d_model']} |")
     lines.append(f"| num_heads | {config['model']['num_heads']} |")
     lines.append(f"| num_rounds | {config['model']['num_rounds']} |")
+    lines.append(f"| alpha | {config['model']['alpha']} |")
+    lines.append(f"| gamma | {config['model']['gamma']} |")
     lines.append(f"| Training steps | {config['training']['steps']} |")
     lines.append(f"| Learning rate | {config['training']['lr']} |")
     lines.append(f"| Corruption rate | {config['training']['corruption_rate']} |")
@@ -69,7 +71,19 @@ def generate_report(validation_results: dict, config: dict) -> str:
             )
     lines.append("")
 
-    lines.append("## 5. Kriging Calibration\n")
+    lines.append("## 5. Slot Engagement (Ablation)\n")
+    lines.append("| Variant | PPL with slots | PPL without slots | Slot Gap |")
+    lines.append("|---|---|---|---|")
+    for name in VARIANT_ORDER:
+        if name in validation_results and "ablation" in validation_results[name]:
+            ab = validation_results[name]["ablation"]
+            lines.append(
+                f"| {name} | {ab['ppl_with_slots']:.2f} | {ab['ppl_without_slots']:.2f} | "
+                f"{ab['slot_gap']:+.2f} |"
+            )
+    lines.append("")
+
+    lines.append("## 6. Kriging Calibration\n")
     for name in VARIANT_ORDER:
         if name in validation_results and "calibration" in validation_results[name]:
             cal = validation_results[name]["calibration"]
@@ -82,7 +96,7 @@ def generate_report(validation_results: dict, config: dict) -> str:
                     lines.append(f"  - Decile {i + 1}: {err:.6f}")
             lines.append("")
 
-    lines.append("## 6. Summary\n")
+    lines.append("## 7. Summary\n")
     lines.extend(_generate_summary(validation_results, config))
     lines.append("")
 
@@ -95,7 +109,13 @@ def _generate_summary(results: dict, config: dict) -> list[str]:
     task_type = config.get("experiment", {}).get("task", "random")
     eval_mode = "corrupted" if config.get("validation", {}).get("use_corrupted_eval", False) else "clean"
     corr_rate = config["training"]["corruption_rate"]
-    vocab_size = config["task"]["random"]["vocab_size"] if task_type == "random" else config["task"]["structured"]["num_states"]
+
+    if task_type == "geology":
+        vocab_size = config.get("task", {}).get("geology", {}).get("num_lithologies", 12)
+    elif task_type == "structured":
+        vocab_size = config["task"]["structured"]["num_states"]
+    else:
+        vocab_size = config["task"]["random"]["vocab_size"]
 
     lines.append("### Key Findings\n")
 
@@ -117,6 +137,8 @@ def _generate_summary(results: dict, config: dict) -> list[str]:
 
     cal_rho = e_krige.get("calibration", {}).get("spearman_rho", 0)
 
+    gap_a = a_full.get("ablation", {}).get("slot_gap", 0)
+
     chance_ppl_clean = vocab_size
     chance_ppl_corrupted = vocab_size
 
@@ -132,6 +154,8 @@ def _generate_summary(results: dict, config: dict) -> list[str]:
         if ppl_a < chance_ppl_corrupted * 0.8:
             lines.append(f"- **Slot interpolation effective**: A_full ({ppl_a:.1f}) meaningfully below chance ({chance_ppl_corrupted}), showing slot weights encode learnable patterns.")
 
+    lines.append(f"- **Slot engagement**: Ablation slot gap = {gap_a:+.1f} ppl points for A_full — positive gap means slots improve perplexity; near-zero or negative gap indicates the architecture does not use slots effectively on this task.")
+
     lines.append(f"- **Slot K cosine**: A_full K cosine={k_cos_a:.3f}, E_krige K cosine={k_cos_e:.3f} — K interpolation recovers moderate directional alignment with ground truth.")
     lines.append(f"- **Slot V cosine**: A_full V cosine={v_cos_a:.3f}, B_boundary V cosine={v_cos_b:.3f} — V weights are near-orthogonal to ground truth, consistent with permutation-invariant slot V parameters.")
     lines.append(f"- **Kriging calibration**: Spearman ρ={cal_rho:.4f} — kriging variance has negligible predictive power for imputation error; the exponential variogram does not capture slot-weight uncertainty in this setting.")
@@ -141,7 +165,7 @@ def _generate_summary(results: dict, config: dict) -> list[str]:
     if k_cos_a > 0.2 and k_cos_e > 0.2:
         lines.append("\n**Conclusion**: Slot K weights vary smoothly enough with M that linear/kriging interpolation recovers non-trivial directional information. Slot V appears permutation-invariant and may need alternative treatment. Future work should test on structured tasks where slot attention has meaningful functions to encode.")
     else:
-        lines.append("\n**Conclusion**: Slot weight interpolation recovers magnitudes (low MSE) but not directions (low cosine). The {task_type} task may lack sufficient structure for slots to develop consistently aligned representations across M values. A structured-task experiment is needed to evaluate the thesis under favorable conditions.")
+        lines.append(f"\n**Conclusion**: Slot weight interpolation recovers magnitudes (low MSE) but not directions (low cosine). The {task_type} task may lack sufficient structure for slots to develop consistently aligned representations across M values. A structured-task experiment is needed to evaluate the thesis under favorable conditions.")
 
     return lines
 

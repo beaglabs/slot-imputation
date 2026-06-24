@@ -38,6 +38,45 @@ def compute_perplexity(
     return math.exp(min(avg_loss, 20))
 
 
+def compute_ablation_ppl(
+    model: nn.Module,
+    data_iter: Iterator[Tuple[torch.Tensor, torch.Tensor]],
+    device: str = "cpu",
+    num_batches: int = 10,
+) -> dict:
+    model.eval()
+    model.to(device)
+    total_with = 0.0
+    total_without = 0.0
+    count = 0
+    with torch.no_grad():
+        for input_ids, target_ids in data_iter:
+            inp = input_ids.to(device)
+            tgt = target_ids.view(-1).to(device)
+
+            logits_with = model(inp, use_slots=True)
+            loss_with = F.cross_entropy(logits_with.view(-1, logits_with.shape[-1]), tgt)
+
+            logits_without = model(inp, use_slots=False)
+            loss_without = F.cross_entropy(logits_without.view(-1, logits_without.shape[-1]), tgt)
+
+            total_with += loss_with.item()
+            total_without += loss_without.item()
+            count += 1
+            if count >= num_batches:
+                break
+
+    n = max(count, 1)
+    ppl_with = math.exp(min(total_with / n, 20))
+    ppl_without = math.exp(min(total_without / n, 20))
+    slot_gap = ppl_without - ppl_with
+    return {
+        "ppl_with_slots": ppl_with,
+        "ppl_without_slots": ppl_without,
+        "slot_gap": slot_gap,
+    }
+
+
 def weight_distance(
     imputed_model: nn.Module, ground_truth_model: nn.Module
 ) -> dict:
@@ -151,6 +190,18 @@ def calibration_analysis(
     return {"spearman_rho": float(rho), "decile_errors": decile_errors}
 
 
+def _build_eval_iter(
+    task_type: str, vocab_size: int, pp_batches: int, corruption_rate: float, device: str
+) -> Iterator[Tuple[torch.Tensor, torch.Tensor]]:
+    if task_type == "geology":
+        from .model import build_geology_data
+        yield from build_geology_data(128, pp_batches, corruption_rate, device)
+    elif corruption_rate > 0:
+        yield from build_corrupted_data(vocab_size, 128, pp_batches, corruption_rate, device)
+    else:
+        yield from build_synthetic_data(vocab_size, 128, pp_batches, device, dtype=torch.long)
+
+
 def full_validation_report(
     variants: Dict[str, Tuple[nn.Module, dict]],
     ground_truth_model: nn.Module,
@@ -158,13 +209,11 @@ def full_validation_report(
     corruption_rate: float = 0.0,
     pp_batches: int = 10,
     vocab_size: int = 256,
+    task_type: str = "random",
 ) -> dict:
     report = {}
     for name, (model, meta) in variants.items():
-        if corruption_rate > 0:
-            data_iter = build_corrupted_data(vocab_size, 128, pp_batches, corruption_rate, device)
-        else:
-            data_iter = build_synthetic_data(vocab_size, 128, pp_batches, device, dtype=torch.long)
+        data_iter = _build_eval_iter(task_type, vocab_size, pp_batches, corruption_rate, device)
         entry = {
             "zero_shot_ppl": compute_perplexity(model, data_iter, device),
             "weight_distance": weight_distance(model, ground_truth_model),
@@ -174,6 +223,9 @@ def full_validation_report(
                 device=device,
             ),
         }
+
+        ablate_iter = _build_eval_iter(task_type, vocab_size, pp_batches, corruption_rate, device)
+        entry["ablation"] = compute_ablation_ppl(model, ablate_iter, device, pp_batches)
 
         if meta.get("krige_var_k") is not None:
             gt_k, _ = extract_slot_pool(ground_truth_model)
@@ -207,12 +259,13 @@ def _main():
     gt_path = os.path.join(args.checkpoint_dir, f"M{target_M}_seed42.pt")
     gt_model, _ = load_checkpoint(gt_path)
 
-    task_cfg = config.get("task", {})
     task_type = config.get("experiment", {}).get("task", "random")
-    if task_type == "structured":
-        vocab_size = task_cfg.get("structured", {}).get("num_states", 16)
+    if task_type == "geology":
+        vocab_size = config.get("task", {}).get("geology", {}).get("num_lithologies", 12)
+    elif task_type == "structured":
+        vocab_size = config.get("task", {}).get("structured", {}).get("num_states", 16)
     else:
-        vocab_size = task_cfg.get("random", {}).get("vocab_size", 256)
+        vocab_size = config.get("task", {}).get("random", {}).get("vocab_size", 256)
 
     variant_names = ["A_full", "B_boundary", "C_signal", "D_naive", "E_krige"]
     variants = {}
@@ -228,6 +281,7 @@ def _main():
         corruption_rate=config["training"]["corruption_rate"] if config.get("validation", {}).get("use_corrupted_eval", False) else 0.0,
         pp_batches=config.get("validation", {}).get("pp_batches", 10),
         vocab_size=vocab_size,
+        task_type=task_type,
     )
 
     with open(args.output, "w") as f:
