@@ -84,7 +84,7 @@ def build_geology_data(
         seq[0, 0] = torch.randint(0, N, (1,), device=device, generator=gen).item()
         for t in range(1, seq_len):
             probs = trans[seq[0, t - 1].item()]
-            seq[0, t] = torch.multinomial(probs, 1, generator=gen).item()
+            seq[0, t] = torch.multinomial(probs, 1, generator=gen).to(device).item()
         clean_ids = seq
 
         corrupted = clean_ids.clone()
@@ -249,7 +249,7 @@ def build_markov_data(
         seq[0, 0] = torch.randint(0, num_states, (1,), device=device, generator=gen).item()
         for t in range(1, seq_len):
             probs = trans[seq[0, t - 1].item()]
-            seq[0, t] = torch.multinomial(probs, 1, generator=gen).item()
+            seq[0, t] = torch.multinomial(probs, 1, generator=gen).to(device).item()
         clean_ids = seq
 
         corrupted = clean_ids.clone()
