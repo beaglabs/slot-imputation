@@ -31,7 +31,7 @@ def generate_report(validation_results: dict, config: dict) -> str:
     lines.append(f"| Seeds | {config['anchors']['seeds']} |")
     lines.append(f"| Device | {config.get('validation', {}).get('device', 'cpu')} |")
     lines.append(f"| Task | {task_type} |")
-    lines.append(f"| Eval mode | {eval_mode} (corruption_rate={'0.50' if eval_mode=='corrupted' else '0.00'}) |")
+    lines.append(f"| Eval mode | {eval_mode} (corruption_rate={config['training']['corruption_rate'] if eval_mode=='corrupted' else '0.00'}) |")
     lines.append("")
 
     lines.append("## 2. Imputation Quality: Zero-Shot Perplexity\n")

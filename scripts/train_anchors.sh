@@ -14,7 +14,7 @@ if [ "$TASK" = "structured" ]; then
     TASK_FLAGS="--task structured --num-states $NUM_STATES --chain-seed $CHAIN_SEED"
 else
     TASK_FLAGS="--task random"
-    CORR_RATE="0.50"
+    CORR_RATE="0.15"
 fi
 
 M_VALUES=(128 192 256 384 512)
