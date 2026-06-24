@@ -1,6 +1,14 @@
 experiment:
   name: "slot_m_variation"
   description: "Test slot pool weight imputation across M dimension"
+  task: "structured"
+
+task:
+  random:
+    vocab_size: 256
+  structured:
+    num_states: 16
+    chain_seed: 42
 
 model:
   d_model: 512
@@ -50,6 +58,7 @@ validation:
   pp_batches: 10
   convergence_steps: 100
   device: "cpu"
+  use_corrupted_eval: true
 
 output:
   checkpoint_dir: "checkpoints/"

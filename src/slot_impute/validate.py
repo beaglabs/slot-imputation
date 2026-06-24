@@ -8,7 +8,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from scipy.stats import spearmanr
 
-from .model import MurmurativeProbe, build_synthetic_data
+from .model import MurmurativeProbe, build_corrupted_data, build_synthetic_data
 from .extract import extract_slot_pool, load_checkpoint
 from .interferometry import hungarian_align_slots
 
@@ -109,7 +109,7 @@ def _fine_tune(model: nn.Module, num_steps: int, device: str) -> list[float]:
 
     rng = torch.Generator(device=device)
     rng.manual_seed(42)
-    vocab_size = 256
+    vocab_size = model.vocab_size
     seq_len = 128
 
     for step in range(num_steps):
@@ -155,16 +155,22 @@ def full_validation_report(
     variants: Dict[str, Tuple[nn.Module, dict]],
     ground_truth_model: nn.Module,
     device: str = "cpu",
+    corruption_rate: float = 0.0,
+    pp_batches: int = 10,
+    vocab_size: int = 256,
 ) -> dict:
     report = {}
     for name, (model, meta) in variants.items():
-        data_iter = build_synthetic_data(256, 128, 10, device, dtype=torch.long)
+        if corruption_rate > 0:
+            data_iter = build_corrupted_data(vocab_size, 128, pp_batches, corruption_rate, device)
+        else:
+            data_iter = build_synthetic_data(vocab_size, 128, pp_batches, device, dtype=torch.long)
         entry = {
             "zero_shot_ppl": compute_perplexity(model, data_iter, device),
             "weight_distance": weight_distance(model, ground_truth_model),
             "convergence": convergence_speedup(
                 model,
-                MurmurativeProbe(num_slots=model.num_slots),
+                MurmurativeProbe(num_slots=model.num_slots, vocab_size=model.vocab_size),
                 device=device,
             ),
         }
@@ -201,6 +207,13 @@ def _main():
     gt_path = os.path.join(args.checkpoint_dir, f"M{target_M}_seed42.pt")
     gt_model, _ = load_checkpoint(gt_path)
 
+    task_cfg = config.get("task", {})
+    task_type = config.get("experiment", {}).get("task", "random")
+    if task_type == "structured":
+        vocab_size = task_cfg.get("structured", {}).get("num_states", 16)
+    else:
+        vocab_size = task_cfg.get("random", {}).get("vocab_size", 256)
+
     variant_names = ["A_full", "B_boundary", "C_signal", "D_naive", "E_krige"]
     variants = {}
     for name in variant_names:
@@ -209,7 +222,13 @@ def _main():
             model, meta = load_checkpoint(path)
             variants[name] = (model, meta)
 
-    validation = full_validation_report(variants, gt_model, device=config.get("validation", {}).get("device", "cpu"))
+    validation = full_validation_report(
+        variants, gt_model,
+        device=config.get("validation", {}).get("device", "cpu"),
+        corruption_rate=config["training"]["corruption_rate"] if config.get("validation", {}).get("use_corrupted_eval", False) else 0.0,
+        pp_batches=config.get("validation", {}).get("pp_batches", 10),
+        vocab_size=vocab_size,
+    )
 
     with open(args.output, "w") as f:
         json.dump(validation, f, indent=2)

@@ -1,7 +1,7 @@
 import json
 import math
 import os
-from typing import Iterator, Tuple
+from typing import Callable, Iterator, Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -106,6 +106,72 @@ def build_synthetic_data(
         yield input_ids, input_ids.clone()
 
 
+def build_corrupted_data(
+    vocab_size: int,
+    seq_len: int,
+    num_batches: int,
+    corruption_rate: float,
+    device: str = "cpu",
+    dtype: torch.dtype = torch.long,
+    seed: int = 42,
+) -> Iterator[Tuple[torch.Tensor, torch.Tensor]]:
+    generator = torch.Generator(device=device)
+    generator.manual_seed(seed)
+    for _ in range(num_batches):
+        clean_ids = torch.randint(0, vocab_size, (1, seq_len), device=device, dtype=dtype, generator=generator)
+        corrupted = clean_ids.clone()
+        if corruption_rate > 0:
+            mask = torch.rand(1, seq_len, device=device, generator=generator) < corruption_rate
+            n_masked = mask.sum().item()
+            if n_masked > 0:
+                noise = torch.randint(0, vocab_size, (n_masked,), device=device, dtype=dtype, generator=generator)
+                corrupted[mask] = noise
+        yield corrupted, clean_ids
+
+
+def make_markov_chain(
+    num_states: int,
+    seed: int = 42,
+) -> torch.Tensor:
+    g = torch.Generator()
+    g.manual_seed(seed)
+    raw = torch.rand(num_states, num_states, generator=g)
+    raw = raw + torch.eye(num_states) * 2.0
+    return raw / raw.sum(dim=1, keepdim=True)
+
+
+def build_markov_data(
+    num_states: int,
+    seq_len: int,
+    num_batches: int,
+    corruption_rate: float = 0.0,
+    device: str = "cpu",
+    dtype: torch.dtype = torch.long,
+    seed: int = 42,
+    chain_seed: int = 42,
+) -> Iterator[Tuple[torch.Tensor, torch.Tensor]]:
+    trans = make_markov_chain(num_states, seed=chain_seed)
+    gen = torch.Generator(device=device)
+    gen.manual_seed(seed)
+
+    for _ in range(num_batches):
+        seq = torch.zeros(1, seq_len, device=device, dtype=dtype)
+        seq[0, 0] = torch.randint(0, num_states, (1,), generator=gen).item()
+        for t in range(1, seq_len):
+            probs = trans[seq[0, t - 1].item()]
+            seq[0, t] = torch.multinomial(probs, 1, generator=gen).item()
+        clean_ids = seq
+
+        corrupted = clean_ids.clone()
+        if corruption_rate > 0:
+            mask = torch.rand(1, seq_len, device=device, generator=gen) < corruption_rate
+            n_masked = mask.sum().item()
+            if n_masked > 0:
+                noise = torch.randint(0, num_states, (n_masked,), device=device, dtype=dtype, generator=gen)
+                corrupted[mask] = noise
+        yield corrupted, clean_ids
+
+
 def train_model(
     model: "MurmurativeProbe",
     device: str = "cpu",
@@ -116,31 +182,41 @@ def train_model(
     corruption_rate: float = 0.25,
     log_interval: int = 100,
     save_dir: str = None,
+    data_fn: Optional[Callable[[], Iterator[Tuple[torch.Tensor, torch.Tensor]]]] = None,
 ) -> list[float]:
     torch.manual_seed(seed)
     model.to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, eps=1e-4)
     loss_history = []
 
-    generator = torch.Generator(device=device)
-    generator.manual_seed(seed)
+    if data_fn is not None:
+        data_iter = data_fn()
+    else:
+        generator = torch.Generator(device=device)
+        generator.manual_seed(seed)
 
     for step in range(steps):
-        clean_ids = torch.randint(
-            0, model.vocab_size, (1, seq_len), device=device, dtype=torch.long, generator=generator
-        )
-
-        corrupted_ids = clean_ids.clone()
-        if corruption_rate > 0:
-            corruption_mask = (
-                torch.rand(1, seq_len, device=device, generator=generator) < corruption_rate
+        if data_fn is not None:
+            try:
+                corrupted_ids, clean_ids = next(data_iter)
+            except StopIteration:
+                data_iter = data_fn()
+                corrupted_ids, clean_ids = next(data_iter)
+        else:
+            clean_ids = torch.randint(
+                0, model.vocab_size, (1, seq_len), device=device, dtype=torch.long, generator=generator
             )
-            num_corrupt = corruption_mask.sum().item()
-            if num_corrupt > 0:
-                noise = torch.randint(
-                    0, model.vocab_size, (num_corrupt,), device=device, dtype=torch.long, generator=generator
+            corrupted_ids = clean_ids.clone()
+            if corruption_rate > 0:
+                corruption_mask = (
+                    torch.rand(1, seq_len, device=device, generator=generator) < corruption_rate
                 )
-                corrupted_ids[corruption_mask] = noise
+                num_corrupt = corruption_mask.sum().item()
+                if num_corrupt > 0:
+                    noise = torch.randint(
+                        0, model.vocab_size, (num_corrupt,), device=device, dtype=torch.long, generator=generator
+                    )
+                    corrupted_ids[corruption_mask] = noise
 
         optimizer.zero_grad()
         logits = model(corrupted_ids)
@@ -185,10 +261,25 @@ def _main():
     parser.add_argument("--corruption-rate", type=float, default=0.25)
     parser.add_argument("--save-dir", type=str, default="checkpoints")
     parser.add_argument("--device", type=str, default="cpu")
+    parser.add_argument("--task", type=str, default="random", choices=["random", "structured"])
+    parser.add_argument("--num-states", type=int, default=16)
+    parser.add_argument("--chain-seed", type=int, default=42)
     args = parser.parse_args()
 
-    model = MurmurativeProbe(num_slots=args.num_slots)
-    print(f"Training M={args.num_slots} seed={args.seed} seq_len={args.seq_len} corr={args.corruption_rate} on {args.device}")
+    vocab_for_task = args.num_states if args.task == "structured" else 256
+    model = MurmurativeProbe(num_slots=args.num_slots, vocab_size=vocab_for_task)
+    task_label = f"task={args.task} states={args.num_states}" if args.task == "structured" else "random"
+    print(f"Training M={args.num_slots} seed={args.seed} seq_len={args.seq_len} corr={args.corruption_rate} {task_label} on {args.device}")
+
+    if args.task == "structured":
+        data_fn = lambda: build_markov_data(
+            num_states=args.num_states, seq_len=args.seq_len,
+            num_batches=args.steps, corruption_rate=args.corruption_rate,
+            device=args.device, seed=args.seed, chain_seed=args.chain_seed,
+        )
+    else:
+        data_fn = None
+
     train_model(
         model,
         device=args.device,
@@ -198,6 +289,7 @@ def _main():
         seq_len=args.seq_len,
         corruption_rate=args.corruption_rate,
         save_dir=args.save_dir,
+        data_fn=data_fn,
     )
 
 
