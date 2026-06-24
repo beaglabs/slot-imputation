@@ -1,0 +1,56 @@
+experiment:
+  name: "slot_m_variation"
+  description: "Test slot pool weight imputation across M dimension"
+
+model:
+  d_model: 512
+  num_heads: 8
+  num_rounds: 3
+  alpha: 0.9
+  gamma: 0.15
+
+training:
+  steps: 500
+  lr: 0.0005
+  seq_len: 2048
+    corruption_rate: 0.50
+  vocab_size: 256
+
+anchors:
+  m_values: [128, 192, 256, 384, 512]
+  seeds: [42, 123, 999]
+  target_m: 256
+  extrapolate_m: 768
+
+imputation:
+  interpolation_methods: ["linear", "spline", "krige"]
+  variants:
+    - name: "A_full"
+      anchors: "all"
+      interpolation: "linear"
+      signal_only: false
+      non_slot: "average"
+    - name: "B_boundary"
+      anchors: [128, 512]
+      interpolation: "linear"
+      signal_only: false
+      non_slot: "average"
+    - name: "C_signal"
+      anchors: "all"
+      interpolation: "linear"
+      signal_only: true
+      non_slot: "average"
+    - name: "D_naive"
+      anchors: [128, 512]
+      interpolation: "linear"
+      signal_only: false
+      non_slot: "best"
+
+validation:
+  pp_batches: 10
+  convergence_steps: 100
+  device: "cpu"
+
+output:
+  checkpoint_dir: "checkpoints/"
+  report_path: "report.md"
