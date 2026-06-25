@@ -7,6 +7,8 @@ dependencies = [
     "numpy",
     "scipy",
     "pyyaml",
+    "datasets>=2.14",
+    "transformers>=4.36",
 ]
 
 [build-system]
