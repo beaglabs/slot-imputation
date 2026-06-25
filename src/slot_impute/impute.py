@@ -138,8 +138,9 @@ def build_imputed_variants(
         non_slot_strategy="average",
     )
 
-    boundary_checkpoints = [cp for cp, M in zip(anchor_checkpoints, anchor_Ms) if M in [128, 512]]
-    boundary_Ms = [M for M in anchor_Ms if M in [128, 512]]
+    boundary_limits = {min(anchor_Ms), max(anchor_Ms)}
+    boundary_checkpoints = [cp for cp, M in zip(anchor_checkpoints, anchor_Ms) if M in boundary_limits]
+    boundary_Ms = [M for M in anchor_Ms if M in boundary_limits]
     variants["B_boundary"] = build_imputed_model(
         target_M, boundary_checkpoints, boundary_Ms,
         interpolation_method="linear",
