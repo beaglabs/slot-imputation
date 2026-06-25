@@ -93,7 +93,7 @@ def build_geology_data(
             mask = torch.rand(1, seq_len, device=device) < corruption_rate
             n_masked = mask.sum().item()
             if n_masked > 0:
-                noise = torch.randint(0, N, (n_masked,), dtype=dtype)
+                noise = torch.randint(0, N, (n_masked,), device=device, dtype=dtype)
                 corrupted[mask] = noise
         batches.append((corrupted, clean_ids))
     return iter(batches)
@@ -260,7 +260,7 @@ def build_markov_data(
             mask = torch.rand(1, seq_len, device=device) < corruption_rate
             n_masked = mask.sum().item()
             if n_masked > 0:
-                noise = torch.randint(0, num_states, (n_masked,), dtype=dtype)
+                noise = torch.randint(0, num_states, (n_masked,), device=device, dtype=dtype)
                 corrupted[mask] = noise
         batches.append((corrupted, clean_ids))
     return iter(batches)
