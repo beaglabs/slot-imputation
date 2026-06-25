@@ -75,26 +75,28 @@ def build_geology_data(
     chain_seed: int = 42,
 ) -> Iterator[Tuple[torch.Tensor, torch.Tensor]]:
     N = len(LITHOLOGY_NAMES)
-    trans = make_geology_transition_matrix(seed=chain_seed).to(device)
-    gen = torch.Generator(device=device)
+    trans = make_geology_transition_matrix(seed=chain_seed)
+    gen = torch.Generator()
     gen.manual_seed(seed)
 
+    batches = []
     for _ in range(num_batches):
-        seq = torch.zeros(1, seq_len, device=device, dtype=dtype)
-        seq[0, 0] = torch.randint(0, N, (1,), device=device, generator=gen).item()
+        seq = torch.zeros(1, seq_len, dtype=dtype)
+        seq[0, 0] = torch.randint(0, N, (1,), generator=gen).item()
         for t in range(1, seq_len):
-            probs = trans[seq[0, t - 1].item()]
-            seq[0, t] = torch.multinomial(probs, 1, generator=gen).item()
-        clean_ids = seq
+            prev = seq[0, t - 1].item()
+            seq[0, t] = torch.multinomial(trans[prev], 1, generator=gen).item()
+        clean_ids = seq.to(device)
 
         corrupted = clean_ids.clone()
         if corruption_rate > 0:
-            mask = torch.rand(1, seq_len, device=device, generator=gen) < corruption_rate
+            mask = torch.rand(1, seq_len, device=device) < corruption_rate
             n_masked = mask.sum().item()
             if n_masked > 0:
-                noise = torch.randint(0, N, (n_masked,), device=device, dtype=dtype, generator=gen)
+                noise = torch.randint(0, N, (n_masked,), dtype=dtype)
                 corrupted[mask] = noise
-        yield corrupted, clean_ids
+        batches.append((corrupted, clean_ids))
+    return iter(batches)
 
 
 class MurmurativeProbe(nn.Module):
@@ -240,26 +242,28 @@ def build_markov_data(
     seed: int = 42,
     chain_seed: int = 42,
 ) -> Iterator[Tuple[torch.Tensor, torch.Tensor]]:
-    trans = make_markov_chain(num_states, seed=chain_seed).to(device)
-    gen = torch.Generator(device=device)
+    trans = make_markov_chain(num_states, seed=chain_seed)
+    gen = torch.Generator()
     gen.manual_seed(seed)
 
+    batches = []
     for _ in range(num_batches):
-        seq = torch.zeros(1, seq_len, device=device, dtype=dtype)
-        seq[0, 0] = torch.randint(0, num_states, (1,), device=device, generator=gen).item()
+        seq = torch.zeros(1, seq_len, dtype=dtype)
+        seq[0, 0] = torch.randint(0, num_states, (1,), generator=gen).item()
         for t in range(1, seq_len):
             probs = trans[seq[0, t - 1].item()]
             seq[0, t] = torch.multinomial(probs, 1, generator=gen).item()
-        clean_ids = seq
+        clean_ids = seq.to(device)
 
         corrupted = clean_ids.clone()
         if corruption_rate > 0:
-            mask = torch.rand(1, seq_len, device=device, generator=gen) < corruption_rate
+            mask = torch.rand(1, seq_len, device=device) < corruption_rate
             n_masked = mask.sum().item()
             if n_masked > 0:
-                noise = torch.randint(0, num_states, (n_masked,), device=device, dtype=dtype, generator=gen)
+                noise = torch.randint(0, num_states, (n_masked,), dtype=dtype)
                 corrupted[mask] = noise
-        yield corrupted, clean_ids
+        batches.append((corrupted, clean_ids))
+    return iter(batches)
 
 
 def train_model(
