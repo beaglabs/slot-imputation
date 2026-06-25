@@ -140,21 +140,37 @@ def _main():
     seq_len = args.seq_len or config["training"]["seq_len"]
 
     if args.quick_test:
-        d_ff = config["d_ff_variation"]["source_d_ff"]
-        steps = config["d_ff_variation"]["quick_test_steps"]
-        subset = args.subset_tokens or 1024 * 32
+        qc = config["quick_test"]
+        model_cfg = TransformerConfig(
+            vocab_size=qc["vocab_size"],
+            d_model=qc["d_model"],
+            d_ff=qc["d_ff"],
+            n_heads=qc["n_heads"],
+            n_layers=qc["n_layers"],
+            max_seq_len=qc["max_seq_len"],
+        )
+        d_ff = qc["d_ff"]
+        steps = qc["steps"]
+        batch_size = qc["batch_size"]
+        seq_len = qc["seq_len"]
+        lr = config["training"]["lr"]
+        subset = qc["subset_tokens"]
     else:
+        d_ff = args.d_ff or config["d_ff_variation"]["source_d_ff"]
+        steps = args.steps or config["training"]["steps"]
+        lr = args.lr or config["training"]["lr"]
+        batch_size = args.batch_size or config["training"]["batch_size"]
+        seq_len = args.seq_len or config["training"]["seq_len"]
         subset = args.subset_tokens
-
-    mc = config["model"]
-    model_cfg = TransformerConfig(
-        vocab_size=mc["vocab_size"],
-        d_model=mc["d_model"],
-        d_ff=d_ff,
-        n_heads=mc["n_heads"],
-        n_layers=mc["n_layers"],
-        max_seq_len=mc["max_seq_len"],
-    )
+        mc = config["model"]
+        model_cfg = TransformerConfig(
+            vocab_size=mc["vocab_size"],
+            d_model=mc["d_model"],
+            d_ff=d_ff,
+            n_heads=mc["n_heads"],
+            n_layers=mc["n_layers"],
+            max_seq_len=mc["max_seq_len"],
+        )
     model = MiniGPT2(model_cfg)
     print(
         f"Model: d_model={model_cfg.d_model} d_ff={d_ff} n_layers={model_cfg.n_layers} "

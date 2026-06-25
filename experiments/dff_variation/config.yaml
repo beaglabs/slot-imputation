@@ -9,6 +9,19 @@ model:
   vocab_size: 50257
   max_seq_len: 1024
 
+quick_test:
+  d_model: 256
+  n_heads: 4
+  n_layers: 4
+  vocab_size: 50257
+  max_seq_len: 256
+  d_ff: 256
+  target_d_ff: 512
+  steps: 500
+  batch_size: 16
+  seq_len: 256
+  subset_tokens: 65536
+
 training:
   steps: 20000
   lr: 0.0006

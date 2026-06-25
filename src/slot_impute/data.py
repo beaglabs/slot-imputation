@@ -17,7 +17,7 @@ def load_wikitext_batches(
     tokenizer.pad_token = tokenizer.eos_token
     tokenizer.model_max_length = 10 ** 9
 
-    dataset = load_dataset("wikitext", "wikitext-103-v1", split=split, streaming=True)
+    dataset = load_dataset("Salesforce/wikitext", "wikitext-103-v1", split=split, streaming=True)
 
     all_ids = []
     needed = subset_tokens + seq_len + 1 if subset_tokens else float("inf")

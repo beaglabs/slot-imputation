@@ -3,7 +3,17 @@ set -e
 
 CONFIG="experiments/dff_variation/config.yaml"
 CHECKPOINT_DIR="checkpoints_dff"
-DEVICE="cpu"
+
+DEVICE=$(python3 -c "
+import torch
+if torch.cuda.is_available():
+    print('cuda')
+elif torch.backends.mps.is_available():
+    print('mps')
+else:
+    print('cpu')
+")
+echo "Device: $DEVICE"
 
 SOURCE_D_FF=$(python3 -c "import yaml; c=yaml.safe_load(open('$CONFIG')); print(c['d_ff_variation']['source_d_ff'])")
 TARGET_D_FF=$(python3 -c "import yaml; c=yaml.safe_load(open('$CONFIG')); print(c['d_ff_variation']['target_d_ff'])")

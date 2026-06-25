@@ -210,6 +210,56 @@ def compute_cost_savings(
     }
 
 
+def compute_dollar_savings(
+    d_ff_small: int,
+    d_ff_large: int,
+    d_model: int,
+    n_layers: int,
+    steps: int = 20000,
+    ms_per_step_small: float = None,
+    ms_per_step_large: float = None,
+    gpu_cost_per_hour: float = 2.0,
+    gpu_name: str = "A100-80GB",
+) -> dict:
+    mlp_params_small = 2 * d_model * d_ff_small * n_layers
+    mlp_params_large = 2 * d_model * d_ff_large * n_layers
+    mlp_ratio = mlp_params_large / mlp_params_small
+
+    attn_params = 4 * d_model * d_model * n_layers
+
+    block_ratio = (attn_params + mlp_params_large) / (attn_params + mlp_params_small)
+    savings_pct = round((1 - 1 / block_ratio) * 100, 1)
+
+    result = {
+        "d_ff_small": d_ff_small,
+        "d_ff_large": d_ff_large,
+        "mlp_flops_ratio": round(mlp_ratio, 2),
+        "block_flops_ratio": round(block_ratio, 2),
+        "compute_savings_pct": savings_pct,
+        "gpu": f"{gpu_name} @ ${gpu_cost_per_hour:.2f}/hr",
+        "steps": steps,
+    }
+
+    if ms_per_step_small is not None:
+        time_small_hr = ms_per_step_small * steps / 1000 / 3600
+        time_large_hr = time_small_hr * block_ratio if ms_per_step_large is None else ms_per_step_large * steps / 1000 / 3600
+        cost_small = round(time_small_hr * gpu_cost_per_hour, 2)
+        cost_large = round(time_large_hr * gpu_cost_per_hour, 2)
+        result["training_time_slim"] = f"{time_small_hr:.1f} hr"
+        result["training_time_full"] = f"{time_large_hr:.1f} hr"
+        result["cost_train_slim"] = f"${cost_small:.2f}"
+        result["cost_train_full"] = f"${cost_large:.2f}"
+        result["cost_savings"] = f"${cost_large - cost_small:.2f}"
+        result["cost_imputation"] = "$0.00 (negligible)"
+        result["total_pipeline_savings"] = f"${cost_large - cost_small:.2f}"
+    else:
+        result["estimated"] = True
+        result["training_time_slim"] = "measure by running"
+        result["training_time_full"] = f"~{block_ratio:.1f}x longer than slim"
+
+    return result
+
+
 def run_full_validation(
     source_path: str,
     ground_truth_path: Optional[str],
@@ -305,6 +355,7 @@ def _main():
         "--config", type=str, default="experiments/dff_variation/config.yaml"
     )
     parser.add_argument("--source-path", type=str, required=True)
+    parser.add_argument("--target-d-ff", type=int, default=None)
     parser.add_argument("--ground-truth-path", type=str, default=None)
     parser.add_argument("--output", type=str, default="dff_validation_results.json")
     parser.add_argument("--device", type=str, default="cpu")
@@ -316,7 +367,7 @@ def _main():
     with open(args.config) as f:
         config = yaml.safe_load(f)
 
-    target_d_ff = config["d_ff_variation"]["target_d_ff"]
+    target_d_ff = args.target_d_ff or config["d_ff_variation"]["target_d_ff"]
     batch_size = config["training"]["batch_size"]
     seq_len = config["training"]["seq_len"]
 
