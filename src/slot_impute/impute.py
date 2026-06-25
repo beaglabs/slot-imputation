@@ -32,9 +32,13 @@ def build_imputed_model(
     use_signal_only: bool = False,
     non_slot_strategy: str = "average",
 ) -> Tuple[MurmurativeProbe, dict]:
+    anchor_models = []
+    anchor_metas = []
     all_weights = []
     for path in anchor_checkpoints:
         model, meta = load_checkpoint(path)
+        anchor_models.append(model)
+        anchor_metas.append(meta)
         all_weights.append((extract_all_weights(model), meta))
 
     if non_slot_strategy == "average":
@@ -72,7 +76,16 @@ def build_imputed_model(
         slot_k_pred = torch.where(target_mask, slot_k_pred, mean_k.expand_as(slot_k_pred))
         slot_v_pred = torch.where(target_mask, slot_v_pred, mean_v.expand_as(slot_v_pred))
 
-    model = MurmurativeProbe(num_slots=target_M)
+    first_model = anchor_models[0]
+    model = MurmurativeProbe(
+        num_slots=target_M,
+        vocab_size=first_model.vocab_size,
+        d_model=first_model.d_model,
+        num_heads=first_model.num_heads,
+        num_rounds=first_model.num_rounds,
+        alpha=first_model.alpha,
+        gamma=first_model.gamma,
+    )
     inject_all_weights(model, non_slot)
     inject_slot_pool(model, slot_k_pred, slot_v_pred)
 
