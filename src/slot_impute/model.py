@@ -80,7 +80,8 @@ def build_geology_data(
     gen.manual_seed(seed)
 
     batches = []
-    for _ in range(num_batches):
+    log_every = max(1, num_batches // 10)
+    for i in range(num_batches):
         seq = torch.zeros(1, seq_len, dtype=dtype)
         seq[0, 0] = torch.randint(0, N, (1,), generator=gen).item()
         for t in range(1, seq_len):
@@ -96,6 +97,8 @@ def build_geology_data(
                 noise = torch.randint(0, N, (n_masked,), device=device, dtype=dtype)
                 corrupted[mask] = noise
         batches.append((corrupted, clean_ids))
+        if (i + 1) % log_every == 0:
+            print(f"  Generated {i + 1}/{num_batches} batches")
     return iter(batches)
 
 
@@ -247,7 +250,8 @@ def build_markov_data(
     gen.manual_seed(seed)
 
     batches = []
-    for _ in range(num_batches):
+    log_every = max(1, num_batches // 10)
+    for i in range(num_batches):
         seq = torch.zeros(1, seq_len, dtype=dtype)
         seq[0, 0] = torch.randint(0, num_states, (1,), generator=gen).item()
         for t in range(1, seq_len):
@@ -263,6 +267,8 @@ def build_markov_data(
                 noise = torch.randint(0, num_states, (n_masked,), device=device, dtype=dtype)
                 corrupted[mask] = noise
         batches.append((corrupted, clean_ids))
+        if (i + 1) % log_every == 0:
+            print(f"  Generated {i + 1}/{num_batches} batches")
     return iter(batches)
 
 
