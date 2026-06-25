@@ -3,6 +3,7 @@ import math
 import os
 from typing import Callable, Iterator, Optional, Tuple
 
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -75,19 +76,18 @@ def build_geology_data(
     chain_seed: int = 42,
 ) -> Iterator[Tuple[torch.Tensor, torch.Tensor]]:
     N = len(LITHOLOGY_NAMES)
-    trans = make_geology_transition_matrix(seed=chain_seed)
-    gen = torch.Generator()
-    gen.manual_seed(seed)
+    rng = np.random.default_rng(seed)
+
+    trans = make_geology_transition_matrix(seed=chain_seed).numpy()
 
     batches = []
     log_every = max(1, num_batches // 10)
     for i in range(num_batches):
-        seq = torch.zeros(1, seq_len, dtype=dtype)
-        seq[0, 0] = torch.randint(0, N, (1,), generator=gen).item()
+        seq = np.zeros(seq_len, dtype=np.int64)
+        seq[0] = rng.integers(0, N)
         for t in range(1, seq_len):
-            prev = seq[0, t - 1].item()
-            seq[0, t] = torch.multinomial(trans[prev], 1, generator=gen).item()
-        clean_ids = seq.to(device)
+            seq[t] = rng.choice(N, p=trans[seq[t - 1]])
+        clean_ids = torch.from_numpy(seq).unsqueeze(0).to(device=device, dtype=dtype)
 
         corrupted = clean_ids.clone()
         if corruption_rate > 0:
@@ -245,19 +245,17 @@ def build_markov_data(
     seed: int = 42,
     chain_seed: int = 42,
 ) -> Iterator[Tuple[torch.Tensor, torch.Tensor]]:
-    trans = make_markov_chain(num_states, seed=chain_seed)
-    gen = torch.Generator()
-    gen.manual_seed(seed)
+    rng = np.random.default_rng(seed)
+    trans = make_markov_chain(num_states, seed=chain_seed).numpy()
 
     batches = []
     log_every = max(1, num_batches // 10)
     for i in range(num_batches):
-        seq = torch.zeros(1, seq_len, dtype=dtype)
-        seq[0, 0] = torch.randint(0, num_states, (1,), generator=gen).item()
+        seq = np.zeros(seq_len, dtype=np.int64)
+        seq[0] = rng.integers(0, num_states)
         for t in range(1, seq_len):
-            probs = trans[seq[0, t - 1].item()]
-            seq[0, t] = torch.multinomial(probs, 1, generator=gen).item()
-        clean_ids = seq.to(device)
+            seq[t] = rng.choice(num_states, p=trans[seq[t - 1]])
+        clean_ids = torch.from_numpy(seq).unsqueeze(0).to(device=device, dtype=dtype)
 
         corrupted = clean_ids.clone()
         if corruption_rate > 0:
